@@ -1,15 +1,53 @@
 from __future__ import annotations
 
 import logging
+import os
 from collections import defaultdict
+from pathlib import Path
 from typing import Any
-
-logger = logging.getLogger(__name__)
 
 import psycopg
 from pgvector.psycopg import register_vector
 
 from app.config import DATABASE_URL
+
+logger = logging.getLogger(__name__)
+
+
+def _schema_sql_path() -> Path:
+    override = os.environ.get("SCHEMA_SQL_PATH", "").strip()
+    if override:
+        return Path(override)
+    root = Path(__file__).resolve().parent.parent
+    return root / "db" / "init.sql"
+
+
+def _parse_init_sql(script: str) -> list[str]:
+    lines: list[str] = []
+    for line in script.splitlines():
+        s = line.strip()
+        if s.startswith("--") or not s:
+            continue
+        lines.append(line)
+    bulk = "\n".join(lines)
+    return [p.strip() + ";" for p in bulk.split(";") if p.strip()]
+
+
+def apply_schema() -> None:
+    """Создаёт расширение и таблицы из db/init.sql (идемпотентно). Без register_vector — до SETUP vector."""
+    if os.environ.get("SKIP_SCHEMA_APPLY", "").strip() in ("1", "true", "yes"):
+        logger.info("SKIP_SCHEMA_APPLY set, skipping schema apply")
+        return
+    path = _schema_sql_path()
+    if not path.is_file():
+        raise FileNotFoundError(f"schema SQL not found: {path}")
+    sql = path.read_text(encoding="utf-8")
+    statements = _parse_init_sql(sql)
+    with psycopg.connect(DATABASE_URL) as conn:
+        with conn.transaction():
+            for stmt in statements:
+                conn.execute(stmt)
+    logger.info("database schema applied from %s", path)
 
 
 def get_conn():

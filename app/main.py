@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+from contextlib import asynccontextmanager
 from typing import Any
 
 from fastapi import FastAPI, HTTPException
@@ -10,7 +11,7 @@ from app.chunking import chunk_text
 from app.config import get_company_profile
 from app.embeddings import embed_chunks, embed_profile
 from app.openai_analyze import analyze_lot_without_index, analyze_match_context
-from app.store import get_conn, health_db, match_profile, replace_lot_chunks
+from app.store import apply_schema, get_conn, health_db, match_profile, replace_lot_chunks
 
 
 def effective_profile(inline: str | None) -> str:
@@ -25,7 +26,14 @@ def effective_profile(inline: str | None) -> str:
         )
     return d
 
-app = FastAPI(title="Tender RAG", version="0.1.0")
+
+@asynccontextmanager
+async def lifespan(_app: FastAPI):
+    apply_schema()
+    yield
+
+
+app = FastAPI(title="Tender RAG", version="0.1.0", lifespan=lifespan)
 
 
 class IndexBody(BaseModel):
