@@ -100,7 +100,11 @@ class LotAnalyzeResponse(BaseModel):
 
 @app.get("/health")
 def health() -> dict[str, Any]:
-    return {"ok": True, "database": health_db()}
+    db_ok, db_err = health_db()
+    out: dict[str, Any] = {"ok": True, "database": db_ok}
+    if db_err is not None:
+        out["database_error"] = db_err
+    return out
 
 
 @app.post("/v1/lots/{lot_id}/index", status_code=204)

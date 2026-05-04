@@ -1,7 +1,10 @@
 from __future__ import annotations
 
+import logging
 from collections import defaultdict
 from typing import Any
+
+logger = logging.getLogger(__name__)
 
 import psycopg
 from pgvector.psycopg import register_vector
@@ -79,12 +82,13 @@ def match_profile(
     return ranked[:top_lots]
 
 
-def health_db() -> bool:
+def health_db() -> tuple[bool, str | None]:
     try:
         conn = get_conn()
         with conn.cursor() as cur:
             cur.execute("SELECT 1")
         conn.close()
-        return True
-    except Exception:
-        return False
+        return True, None
+    except Exception as e:
+        logger.exception("database health check failed")
+        return False, str(e)
