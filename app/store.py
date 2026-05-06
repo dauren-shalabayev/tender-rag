@@ -8,6 +8,7 @@ from typing import Any
 
 import psycopg
 from pgvector.psycopg import register_vector
+from psycopg.types.json import Json
 
 from app.config import DATABASE_URL
 
@@ -82,6 +83,33 @@ def replace_lot_chunks(
                 (lot_id, idx, content, emb, source_hint),
             )
     conn.commit()
+
+
+def replace_lot_spec_summary(conn, lot_id: str, payload: dict[str, Any]) -> None:
+    with conn.cursor() as cur:
+        cur.execute(
+            """
+            INSERT INTO lot_spec_summaries (lot_id, payload, updated_at)
+            VALUES (%s, %s, NOW())
+            ON CONFLICT (lot_id) DO UPDATE SET
+              payload = EXCLUDED.payload,
+              updated_at = NOW()
+            """,
+            (lot_id, Json(payload)),
+        )
+    conn.commit()
+
+
+def get_lot_spec_summary(conn, lot_id: str) -> dict[str, Any] | None:
+    with conn.cursor() as cur:
+        cur.execute(
+            "SELECT payload FROM lot_spec_summaries WHERE lot_id = %s",
+            (lot_id,),
+        )
+        row = cur.fetchone()
+    if not row:
+        return None
+    return row[0]
 
 
 def match_profile(
