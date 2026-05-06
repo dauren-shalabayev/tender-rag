@@ -28,7 +28,7 @@ services:
       DATABASE_URL: postgresql://rag:rag@db:5432/rag
       EMBEDDING_MODEL: intfloat/multilingual-e5-small
       FILES_DIR: /files
-      OPENAI_API_KEY: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
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
       OPENAI_CHAT_MODEL: ${OPENAI_CHAT_MODEL:-gpt-4o-mini}
       COMPANY_PROFILE: ${COMPANY_PROFILE:-}
       COMPANY_PROFILE_FILE: ${COMPANY_PROFILE_FILE:-/files/company_profile.txt}

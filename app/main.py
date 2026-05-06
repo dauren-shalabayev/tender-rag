@@ -145,10 +145,15 @@ class LotAnalyzeResponse(BaseModel):
 @app.get("/health")
 def health() -> dict[str, Any]:
     db_ok, db_err = health_db()
+    _key = os.environ.get("OPENAI_API_KEY", "")
     out: dict[str, Any] = {
         "ok": True,
         "database": db_ok,
-        "openai_configured": bool(os.environ.get("OPENAI_API_KEY", "").strip()),
+        "openai_configured": bool(_key.strip()),
+        "openai_env": {
+            "OPENAI_API_KEY_defined": "OPENAI_API_KEY" in os.environ,
+            "OPENAI_API_KEY_length": len(_key),
+        },
     }
     if db_err is not None:
         out["database_error"] = db_err
