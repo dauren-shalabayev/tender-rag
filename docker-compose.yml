@@ -20,6 +20,10 @@ services:
     build: .
     ports:
       - "8083:8083"
+    # OPENAI_API_KEY и прочие секреты — в файле .env рядом с compose (см. .env.example), не коммитьте .env
+    env_file:
+      - path: .env
+        required: false
     environment:
       DATABASE_URL: postgresql://rag:rag@db:5432/rag
       EMBEDDING_MODEL: intfloat/multilingual-e5-small
