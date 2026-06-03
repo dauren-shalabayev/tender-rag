@@ -1,6 +1,8 @@
-# Tender RAG
+# Knowledge Base RAG
 
-Семантический поиск по текстам лотов (pgvector) и опциональный разбор через OpenAI. API по умолчанию: **`http://127.0.0.1:8083`**.
+Сервис базы знаний: загрузка PDF/DOCX и чат с ответами по документам (pgvector + OpenAI).
+
+API: **`http://127.0.0.1:8083`**
 
 ## Запуск
 
@@ -8,34 +10,35 @@
 docker compose up --build
 ```
 
-Переменные окружения — см. `.env.example` (`OPENAI_*`, `COMPANY_PROFILE` / `COMPANY_PROFILE_FILE` для профиля по умолчанию).
+Скопируйте `.env.example` → `.env` и укажите `OPENAI_API_KEY`.
 
-## Проверка
+Если раньше использовалась старая схема (`tender_chunks`), сбросьте том БД:
 
 ```bash
-curl -s http://127.0.0.1:8083/health
+docker compose down -v
+docker compose up --build
 ```
 
-## Документация по сценариям
+## API
 
-Оглавление отдельных страниц: [docs/README.md](docs/README.md).  
-Краткая сводка **2 / 3 / 4** одним файлом: [README.variants.md](README.variants.md).
+| Метод | Путь | Описание |
+|-------|------|----------|
+| GET | `/health` | Проверка сервиса |
+| POST | `/v1/kb/{kb_id}/documents` | Загрузить PDF/DOCX |
+| GET | `/v1/kb/{kb_id}/documents` | Список документов |
+| POST | `/v1/kb/{kb_id}/chat` | Вопрос по базе знаний |
 
-| Документ | Что внутри |
-|----------|------------|
-| [docs/indexing.md](docs/indexing.md) | **`POST /v1/lots/{lot_id}/index`** — залить лот в базу (нужно для вариантов 2 и 4) |
-| [docs/match.md](docs/match.md) | **Вариант 2** — `POST /v1/match`: только поиск по базе, без OpenAI |
-| [docs/lot-analyze.md](docs/lot-analyze.md) | **Вариант 3** — `POST /v1/lot/analyze`: один лот по тексту, вердикт «подходит / нет» |
-| [docs/match-analyze.md](docs/match-analyze.md) | **Вариант 4** — `POST /v1/match/analyze`: топ по базе + разбор OpenAI |
+Подробнее: [docs/kb-chat.md](docs/kb-chat.md)
 
-## Сводка
+## Пример
 
-Перед **2** и **4** для новых лотов нужен **`POST /v1/lots/{lot_id}/index`**. **3** индекс не требует.
+```bash
+curl -X POST "http://127.0.0.1:8083/v1/kb/default/documents" \
+  -F "file=@./manual.pdf"
 
-| | Нужен `/index` | OpenAI | Один лот текстом в запросе |
-|--|:--:|:--:|:--|
-| **2** `match` | да | нет | нет |
-| **3** `lot/analyze` | нет | да | да (`lot_text`) |
-| **4** `match/analyze` | да для попадания в топ из БД | да | опционально (`incoming`) |
+curl -X POST "http://127.0.0.1:8083/v1/kb/default/chat" \
+  -H "Content-Type: application/json" \
+  -d '{"message": "О чём этот документ?"}'
+```
 
-**Итог:** **2** — умный поиск по базе; **3** — разбор одного лота без базы (карточка тендера); **4** — топ по базе и словесный разбор.
+Фронт на `localhost:8080` вызывает те же эндпоинты (CORS настроен в compose).

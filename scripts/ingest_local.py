@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Загрузить PDF/DOCX из папки files как отдельные lot_id (префикс local:)."""
+"""Загрузить PDF/DOCX из папки files в базу знаний (kb_id=default)."""
 
 from __future__ import annotations
 
@@ -17,9 +17,10 @@ from pypdf import PdfReader
 
 from app.chunking import chunk_text
 from app.embeddings import embed_chunks
-from app.store import get_conn, replace_lot_chunks
+from app.store import get_conn, kb_document_key, replace_document_chunks
 
 FILES_DIR = Path(os.environ.get("FILES_DIR", ROOT / "files"))
+KB_ID = os.environ.get("KB_ID", "default")
 
 
 def extract_pdf(path: Path) -> str:
@@ -35,9 +36,9 @@ def extract_docx(path: Path) -> str:
     return "\n".join(p.text for p in doc.paragraphs if p.text.strip())
 
 
-def lot_id_from_file(path: Path) -> str:
+def document_id_from_file(path: Path) -> str:
     safe = re.sub(r"[^\w\-.]+", "_", path.stem)
-    return f"local:{safe}"
+    return safe or "document"
 
 
 def main() -> None:
@@ -56,19 +57,20 @@ def main() -> None:
             if not text:
                 print(f"  пропуск (пустой текст): {path.name}")
                 continue
-            lot_id = lot_id_from_file(path)
+            doc_id = document_id_from_file(path)
+            doc_key = kb_document_key(KB_ID, doc_id)
             chunks = chunk_text(text)
             if not chunks:
                 continue
             vectors = embed_chunks(chunks)
-            replace_lot_chunks(
+            replace_document_chunks(
                 conn,
-                lot_id,
+                doc_key,
                 chunks,
                 vectors,
                 source_hint=path.name,
             )
-            print(f"  lot_id={lot_id}, чанков={len(chunks)}")
+            print(f"  kb={KB_ID} document_id={doc_id}, чанков={len(chunks)}")
     finally:
         conn.close()
 

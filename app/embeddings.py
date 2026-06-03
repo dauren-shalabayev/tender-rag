@@ -46,11 +46,11 @@ def embed_passages(texts: Sequence[str]) -> np.ndarray:
     )
 
 
-def embed_profile(profile: str) -> list[float]:
-    v = embed_queries([profile])[0]
-    return np.asarray(v, dtype=np.float32).tolist()
-
-
 def embed_chunks(chunks: Sequence[str]) -> list[list[float]]:
     mat = embed_passages(chunks)
     return [np.asarray(row, dtype=np.float32).tolist() for row in mat]
+
+
+def embed_query(text: str) -> list[float]:
+    v = embed_queries([text])[0]
+    return np.asarray(v, dtype=np.float32).tolist()
