@@ -12,7 +12,9 @@ docker compose up --build
 
 Скопируйте `.env.example` → `.env` и укажите `OPENAI_API_KEY`.
 
-Если раньше использовалась старая схема (`tender_chunks`), сбросьте том БД:
+При старте API автоматически применяются `db/init.sql` и миграции из `db/migrations/` (таблица `schema_migrations`).
+
+Миграция `001_migrate_tender_to_kb.sql` переносит данные из старой таблицы `tender_chunks` в `kb_chunks`. Если миграция не помогла — сброс тома:
 
 ```bash
 docker compose down -v

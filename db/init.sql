@@ -17,3 +17,8 @@ CREATE INDEX IF NOT EXISTS kb_chunks_doc_key_idx ON kb_chunks (doc_key);
 
 CREATE INDEX IF NOT EXISTS kb_chunks_embedding_hnsw
   ON kb_chunks USING hnsw (embedding vector_cosine_ops);
+
+CREATE TABLE IF NOT EXISTS schema_migrations (
+  version TEXT PRIMARY KEY,
+  applied_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);

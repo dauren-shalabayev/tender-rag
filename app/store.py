@@ -13,12 +13,22 @@ from app.config import DATABASE_URL
 logger = logging.getLogger(__name__)
 
 
+def _db_root() -> Path:
+    override = os.environ.get("DB_ROOT", "").strip()
+    if override:
+        return Path(override)
+    return Path(__file__).resolve().parent.parent / "db"
+
+
 def _schema_sql_path() -> Path:
     override = os.environ.get("SCHEMA_SQL_PATH", "").strip()
     if override:
         return Path(override)
-    root = Path(__file__).resolve().parent.parent
-    return root / "db" / "init.sql"
+    return _db_root() / "init.sql"
+
+
+def _migrations_dir() -> Path:
+    return _db_root() / "migrations"
 
 
 def _parse_init_sql(script: str) -> list[str]:
@@ -30,6 +40,29 @@ def _parse_init_sql(script: str) -> list[str]:
         lines.append(line)
     bulk = "\n".join(lines)
     return [p.strip() + ";" for p in bulk.split(";") if p.strip()]
+
+
+def _apply_migrations(conn: psycopg.Connection) -> None:
+    mig_dir = _migrations_dir()
+    if not mig_dir.is_dir():
+        return
+    for path in sorted(mig_dir.glob("*.sql")):
+        version = path.name
+        with conn.cursor() as cur:
+            cur.execute(
+                "SELECT 1 FROM schema_migrations WHERE version = %s",
+                (version,),
+            )
+            if cur.fetchone():
+                continue
+            sql = path.read_text(encoding="utf-8").strip()
+            if sql:
+                cur.execute(sql)
+            cur.execute(
+                "INSERT INTO schema_migrations (version) VALUES (%s)",
+                (version,),
+            )
+        logger.info("migration applied: %s", version)
 
 
 def apply_schema() -> None:
@@ -45,6 +78,7 @@ def apply_schema() -> None:
         with conn.transaction():
             for stmt in statements:
                 conn.execute(stmt)
+            _apply_migrations(conn)
     logger.info("database schema applied from %s", path)
 
 
