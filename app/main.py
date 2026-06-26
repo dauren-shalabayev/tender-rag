@@ -6,12 +6,19 @@ from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Annotated, Any, Literal
 
-from fastapi import FastAPI, File, Form, HTTPException, UploadFile
+from fastapi import BackgroundTasks, FastAPI, File, Form, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
 
 from app.chunking import chunk_text
+from app.confluence_ingest import (
+    confluence_configured,
+    get_ingest_state,
+    load_confluence_config,
+    run_ingest_job,
+    try_start_ingest,
+)
 from app.config import CORS_ORIGINS
 from app.document_extract import extract_text_from_bytes
 from app.embeddings import embed_chunks, embed_query
@@ -73,6 +80,29 @@ class KbDocumentInfo(BaseModel):
     updated_at: str | None = None
 
 
+class ConfluenceIngestBody(BaseModel):
+    space: str | None = Field(
+        None,
+        description="Ключ space в Confluence; по умолчанию CONFLUENCE_SPACE из .env",
+    )
+
+
+class ConfluenceIngestStarted(BaseModel):
+    status: Literal["started"] = "started"
+    kb_id: str
+    space: str
+
+
+class ConfluenceIngestStatus(BaseModel):
+    status: Literal["idle", "running", "completed", "failed"]
+    kb_id: str | None = None
+    space: str | None = None
+    started_at: str | None = None
+    finished_at: str | None = None
+    result: dict[str, Any] | None = None
+    error: str | None = None
+
+
 def sanitize_document_id(name: str) -> str:
     base = Path(name).stem or "document"
     s = re.sub(r"[^\w.\-]+", "_", base, flags=re.UNICODE)
@@ -87,6 +117,7 @@ def health() -> dict[str, Any]:
         "ok": True,
         "database": db_ok,
         "openai_configured": bool(_key.strip()),
+        "confluence_configured": confluence_configured(),
     }
     if db_err is not None:
         out["database_error"] = db_err
@@ -199,11 +230,61 @@ def kb_chat(kb_id: str, body: KbChatBody) -> KbChatResponse:
     return KbChatResponse(answer=answer, sources=sources)
 
 
+@app.post(
+    "/v1/kb/{kb_id}/ingest/confluence",
+    response_model=ConfluenceIngestStarted,
+    status_code=202,
+)
+def kb_ingest_confluence(
+    kb_id: str,
+    background_tasks: BackgroundTasks,
+    body: ConfluenceIngestBody | None = None,
+) -> ConfluenceIngestStarted:
+    try:
+        config = load_confluence_config(space=body.space if body else None)
+    except ValueError as e:
+        raise HTTPException(status_code=503, detail=str(e)) from e
+
+    kb = kb_id.strip().strip("/")
+    if not kb:
+        raise HTTPException(status_code=400, detail="kb_id пуст")
+
+    if not try_start_ingest(kb, config.space):
+        raise HTTPException(
+            status_code=409,
+            detail="загрузка из Confluence уже выполняется",
+        )
+
+    background_tasks.add_task(run_ingest_job, kb, space=config.space)
+    return ConfluenceIngestStarted(kb_id=kb, space=config.space)
+
+
+@app.get(
+    "/v1/kb/{kb_id}/ingest/confluence/status",
+    response_model=ConfluenceIngestStatus,
+)
+def kb_ingest_confluence_status(kb_id: str) -> ConfluenceIngestStatus:
+    state = get_ingest_state()
+    kb = kb_id.strip().strip("/")
+    if state.kb_id and state.kb_id != kb and state.status == "running":
+        return ConfluenceIngestStatus(status="idle")
+    return ConfluenceIngestStatus(
+        status=state.status,
+        kb_id=state.kb_id,
+        space=state.space,
+        started_at=state.started_at,
+        finished_at=state.finished_at,
+        result=state.result,
+        error=state.error,
+    )
+
+
 @app.get("/")
 def root() -> dict[str, str]:
     return {
         "service": "knowledge-base-rag",
         "docs": "GET /v1/kb/{kb_id}/documents",
         "upload": "POST /v1/kb/{kb_id}/documents",
+        "ingest_confluence": "POST /v1/kb/{kb_id}/ingest/confluence",
         "chat": "POST /v1/kb/{kb_id}/chat",
     }
